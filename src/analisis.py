@@ -3,273 +3,314 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-orden_edades = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas']
-
-def generar_informe_eda(df: pd.DataFrame):
-    print("=== INFORME DE ANÁLISIS EXPLORATORIO (EDA) ===")
-    print(f"Tamaño del dataset: {df.shape[0]} filas y {df.shape[1]} columnas")
-    print("-" * 50)
-
-
-    # [0.1] VALIDACIÓN DE INTEGRIDAD (DATA QUALITY)
-    print("--- VALIDACIÓN DE INTEGRIDAD DE DATOS ---")
+def realizar_diagnostico_inicial(df: pd.DataFrame):
+    """
+    Realiza un escaneo rápido de la calidad y consistencia del dataset 
+    antes de cualquier proceso de limpieza o transformación.
+    """
+    print("--- DIAGNÓSTICO INICIAL DE CALIDAD DE DATOS ---")
+    
+    # 1. Estructura Básica
+    print(f"\n[1] Dimensiones: {df.shape[0]} filas y {df.shape[1]} columnas.")
+    
+    # 2. Análisis de Nulos, Tipos y DUPLICADOS
+    print("\n[2] Análisis de Integridad Superficial:")
+    
     duplicados = df.duplicated().sum()
     nulos_totales = df.isnull().sum().sum()
     
-    resumen_calidad = pd.DataFrame({
-        'Métrica': ['Filas Duplicadas', 'Valores Nulos (NaN)', 'Total de Registros'],
-        'Resultado': [duplicados, nulos_totales, len(df)]
-    })
-    print(resumen_calidad.to_string(index=False))
-    print("-" * 40)
-
-    # [0.2] VOLUMEN PROMEDIO DE PACIENTES POR GRUPO ETARIO
-    print("\n[0] VOLUMEN PROMEDIO DE PACIENTES POR GRUPO ETARIO")
+    print(f"- Filas duplicadas detectadas: {duplicados}")
     
-    cols_edad = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas']
-    etiquetas_finales = ['< 1 año', '1-4 años', '5-14 años', '15-64 años', '> 65 años']
-    
-    promedios_edad = df[cols_edad].mean()
+    if nulos_totales > 0:
+        print(f"- Valores nulos detectados: {nulos_totales}")
+        info_calidad = pd.DataFrame({
+            'Tipo': df.dtypes,
+            'Nulos': df.isnull().sum(),
+            '% Nulos': (df.isnull().sum() / len(df)) * 100
+        })
+        print(info_calidad[info_calidad['Nulos'] > 0])
+    else:
+        print("Integridad: No se detectan valores nulos.")
 
-    plt.figure(figsize=(12, 6))
+    # 3. Verificación de Integridad Relacional
+    print("\n[3] Verificando Consistencia Relacional (Suma de Edades vs Total):")
+    # Asegúrate de que estos nombres coincidan EXACTAMENTE con tu CSV
+    cols_edad = ['NumMenor1Anio', 'Num1a4Anios', 'Num5a14Anios', 'Num15a64Anios', 'Num65oMas']
+    col_total = 'NumTotal'
     
-    # CORRECCIÓN DEL WARNING: Asignamos x a hue y legend=False
-    ax = sns.barplot(
-        x=etiquetas_finales, 
-        y=promedios_edad.values, 
-        hue=etiquetas_finales,  # Esto quita el FutureWarning
-        palette="viridis",
-        legend=False            # Evita que salga una leyenda que no necesitamos
-    )
+    try:
+        suma_edades = df[cols_edad].sum(axis=1)
+        descalces = (suma_edades != df[col_total]).sum()
+        
+        if descalces == 0:
+            print("EXCELENTE: El 100% de los registros son coherentes (Suma edades == Total).")
+        else:
+            print(f"ATENCIÓN: Se detectaron {descalces} filas donde la suma no calza.")
+    except KeyError as e:
+        print(f"Error de nombres: No se encontró la columna {e}")
 
-    # Añadir etiquetas de valor sobre las barras
-    for p in ax.patches:
-        ax.annotate(f'{p.get_height():.2f}', 
-                    (p.get_x() + p.get_width() / 2., p.get_height()), 
-                    ha = 'center', va = 'center', 
-                    xytext = (0, 9), 
-                    textcoords = 'offset points',
-                    fontweight='bold')
+    # 4. Visualización de Dispersión Inicial
+    print("\n[4] Generando Boxplot de Dispersión Original...")
+    try:
+        plt.figure(figsize=(12, 5))
+        df[cols_edad + [col_total]].boxplot()
+        plt.title("Dispersión Original de Pacientes (Detección visual de Outliers)")
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+    except:
+        print("No se pudo generar el boxplot. Verifica los nombres de las columnas.")
 
-    plt.title('Promedio de Pacientes por Registro según Rango Etario', fontsize=14)
-    plt.ylabel('Cantidad Promedio de Personas')
-    plt.xlabel('Rango de Edad')
-    sns.despine()
+    # 5. Muestra Aleatoria
+    print("\n[5] Muestra aleatoria de datos para inspección manual:")
+    print(df.sample(min(5, len(df)))) 
+    print("-" * 50)
+
+# --- FUNCIÓN AUXILIAR PARA ZOOMS ---
+def graficar_zoom_outliers(df_base, columna, titulo_grupo, color_pal, resaltado_rojo=False):
+    Q1, Q3 = df_base[columna].quantile(0.25), df_base[columna].quantile(0.75)
+    limite = Q3 + 1.5 * (Q3 - Q1)
+    df_out = df_base[df_base[columna] > limite].copy()
     
+    plt.figure(figsize=(15, 5))
+    sns.stripplot(data=df_out, x='Mes', y=columna, hue='Año', dodge=True, alpha=0.6, palette=color_pal, s=8, jitter=0.25)
+    plt.title(f'Picos de Atención Crítica: {titulo_grupo}\n({len(df_out)} registros detectados como Outliers > {limite:.1f} pacientes)', fontsize=13)
+    plt.xticks(range(0, 12), ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'])
+    plt.ylabel('Pacientes Atendidos')
+    color_vspan = 'red' if resaltado_rojo else 'gray'
+    plt.axvspan(4.5, 7.5, color=color_vspan, alpha=0.07, label='Periodo Crítico Invierno')
+    plt.legend(title='Año', bbox_to_anchor=(1.05, 1))
+    plt.grid(True, axis='y', alpha=0.3)
     plt.tight_layout()
     plt.show()
 
-    # 1. Preparación de datos temporales para el gráfico superpuesto
+# --- FUNCIÓN PRINCIPAL DEL INFORME ---
+def generar_informe_eda(df: pd.DataFrame):
+    print("=== INFORME DE ANÁLISIS EXPLORATORIO (EDA) ===")
+    print(f"Dataset: {df.shape[0]} filas | {df.shape[1]} columnas")
+    print("-" * 50)
+
+    # [0] INTEGRIDAD Y CALIDAD
+    duplicados, nulos = df.duplicated().sum(), df.isnull().sum().sum()
+    print(f"--- CALIDAD DE DATOS ---\nDuplicados: {duplicados} | Nulos: {nulos}\n")
+
+    # Preparación temporal y económica
     df_temp = df.copy()
     df_temp['fechaatenciontexto'] = pd.to_datetime(df_temp['fechaatenciontexto'])
     df_temp['Mes'] = df_temp['fechaatenciontexto'].dt.month
     df_temp['Año'] = df_temp['fechaatenciontexto'].dt.year
+    df_temp['costo_unitario'] = df_temp['costoatencionclp'] / df_temp['numtotal'].replace(0, 1)
 
-    # 2. Configuración de visualizaciones
-    sns.set_theme(style="whitegrid")
+    cols_edad = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas']
+    etiquetas_edad = ['< 1 año', '1-4 años', '5-14 años', '15-64 años', '> 65 años']
+
+    # --- [0.1] ESTADÍSTICAS DESCRIPTIVAS Y OUTLIERS ---
+    print("\n--- MÉTRICAS DE TENDENCIA CENTRAL Y ATÍPICOS ---")
+    cols_analisis = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas', 'numtotal']
+    
+    resumen_estadistico = []
+
+    for col in cols_analisis:
+        # Tendencia Central
+        promedio = df[col].mean()
+        mediana = df[col].median()
+        
+        # Cálculo de Outliers (IQR)
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        limite_superior = Q3 + 1.5 * IQR
+        
+        cantidad_outliers = (df[col] > limite_superior).sum()
+        porcentaje_outliers = (cantidad_outliers / len(df)) * 100
+        
+        resumen_estadistico.append({
+            'Variable': col,
+            'Promedio': f"{promedio:.2f}",
+            'Mediana': f"{mediana:.2f}",
+            'Cant. Outliers': cantidad_outliers,
+            '% Outliers': f"{porcentaje_outliers:.2f}%"
+        })
+
+    # Mostramos la tabla consolidada
+    df_resumen = pd.DataFrame(resumen_estadistico)
+    print(df_resumen.to_string(index=False))
+    print("-" * 60)
+
+    # --- BLOQUE 1: RADIOGRAFÍA GENERAL ---
     fig, axes = plt.subplots(2, 2, figsize=(18, 14))
+    sns.barplot(x=etiquetas_edad, y=df[cols_edad].mean().values, ax=axes[0,0], hue=etiquetas_edad, palette="viridis", legend=False)
+    for p in axes[0,0].patches:
+        axes[0,0].annotate(f'{p.get_height():.2f}', (p.get_x() + p.get_width()/2., p.get_height()), ha='center', va='center', xytext=(0,9), textcoords='offset points', fontweight='bold')
+    axes[0,0].set_title('Promedio de Pacientes por Registro')
 
-    # A. Distribución de Triage (Sin Desconocidos y sin Warning)
     df_triage = df[df['prioridadtriage'] != 'Desconocido']
-    sns.countplot(
-        data=df_triage, x='prioridadtriage', ax=axes[0, 0], 
-        hue='prioridadtriage', palette='viridis', legend=False,
-        order=['C1', 'C2', 'C3', 'C4', 'C5']
-    )
-    axes[0, 0].set_title('Atenciones por Nivel de Triage (Excluye Desconocidos)')
+    sns.countplot(data=df_triage, x='prioridadtriage', ax=axes[0,1], hue='prioridadtriage', palette='viridis', order=['C1','C2','C3','C4','C5'], legend=False)
+    axes[0,1].set_title('Distribución por Nivel de Triage')
 
-    # B. Top 5 Causas (Sumando NumTotal para que las barras varíen)
+    sns.heatmap(df[cols_edad].corr(), annot=True, cmap='RdYlGn', fmt=".2f", ax=axes[1,0])
+    axes[1,0].set_title('Correlación de Rangos Etarios')
+
     top_causas = df.groupby('causa')['numtotal'].sum().sort_values(ascending=False).head(5)
-    sns.barplot(
-        x=top_causas.values, y=top_causas.index, ax=axes[0, 1], 
-        hue=top_causas.index, palette='magma', legend=False
-    )
-    axes[0, 1].set_title('Top 5 Causas por Cantidad Total de Pacientes')
-
-    # C. Boxplot de Pacientes Totales (Outliers)
-    sns.boxplot(x=df['numtotal'], ax=axes[1, 0], color='#69d1a5')
-    axes[1, 0].set_title('Distribución y Outliers de NumTotal')
-
-    # D. Evolución Temporal Superpuesta (Año tras Año)
-    # Agrupamos por Año y Mes sumando el total de pacientes
-    df_evolucion = df_temp.groupby(['Año', 'Mes'])['numtotal'].sum().reset_index()
-    
-    sns.lineplot(
-        data=df_evolucion, x='Mes', y='numtotal', hue='Año', 
-        marker='o', ax=axes[1, 1], palette='tab10'
-    )
-    axes[1, 1].set_title('Comparativa Mensual de Atenciones (2023 - 2025)')
-    axes[1, 1].set_xticks(range(1, 13))
-    axes[1, 1].set_xticklabels(['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'])
-
+    sns.barplot(x=top_causas.values, y=top_causas.index, ax=axes[1,1], hue=top_causas.index, palette='magma', legend=False)
+    axes[1,1].set_title('Top 5 Causas (Volumen Total)')
     plt.tight_layout()
     plt.show()
 
-    # 3. Análisis de Correlación (Edades)
-    print("\n[4] CORRELACIÓN ENTRE RANGOS ETARIOS")
-    cols_edad = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas']
-    corr = df[cols_edad].corr()
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(corr, annot=True, cmap='RdYlGn', fmt=".2f")
-    plt.title('Mapa de Calor: Correlación de Edades')
+    # --- BLOQUE 2: PICOS DE DEMANDA ---
+    plt.figure(figsize=(15, 5))
+    df_box = df[cols_edad + ['numtotal']].melt(var_name='Grupo', value_name='Pacientes')
+    sns.boxplot(data=df_box, x='Grupo', y='Pacientes', palette='Set3', hue='Grupo', legend=False)
+    plt.xticks(range(6), etiquetas_edad + ['Total'])
+    plt.title('Identificación de Outliers (Boxplots)')
     plt.show()
 
-# [5] RELACIÓN CAUSA VS RANGO DE EDAD: VOLUMEN VS INTENSIDAD
-    print("\n[5] ANALIZANDO RELACIÓN CAUSA VS RANGO DE EDAD...")
-    
-    cols_edad = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas']
-    
-    # Agrupación base (Suma de personas)
-    causa_edad = df.groupby('causa')[cols_edad].sum()
+    graficar_zoom_outliers(df_temp, 'nummenor1anio', 'Bebés (< 1 año) - ALERTA 12%', 'rocket_r', resaltado_rojo=True)
+    graficar_zoom_outliers(df_temp, 'num1a4anios', 'Infantes (1 a 4 años)', 'viridis')
+    graficar_zoom_outliers(df_temp, 'num65omas', 'Adultos Mayores (> 65 años)', 'magma')
 
-    # 1. Normalización por FILA (Perspectiva de la Enfermedad)
-    # "De 100 personas con Bronquitis, ¿qué % son bebés, adultos, etc.?"
-    causa_edad_fila = causa_edad.div(causa_edad.sum(axis=1), axis=0) * 100
+    # --- [2.3] TORTAS DE OUTLIERS ---
+    grupos_int = [('nummenor1anio', 'Bebés'), ('num1a4anios', 'Infantes'), ('num65omas', 'Mayores'), ('numtotal', 'Total')]
+    meses_n = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    axes = axes.flatten()
+    for i, (col, tit) in enumerate(grupos_int):
+        Q1, Q3 = df_temp[col].quantile(0.25), df_temp[col].quantile(0.75)
+        df_out = df_temp[df_temp[col] > (Q3 + 1.5*(Q3-Q1))]
+        cnt = df_out['Mes'].value_counts().reindex(range(1, 13), fill_value=0)
+        axes[i].pie(cnt, labels=[meses_n[m-1] if v > sum(cnt)*0.02 else '' for m, v in cnt.items()], autopct=lambda p: f'{p:.1f}%' if p > 2 else '', startangle=140, colors=sns.color_palette("hls", 12))
+        axes[i].add_artist(plt.Circle((0,0), 0.70, fc='white'))
+        axes[i].set_title(f'Outliers por Mes: {tit}')
+    plt.tight_layout(); plt.show()
 
-    # 2. Normalización por COLUMNA (Perspectiva del Grupo Etario)
-    # "De 100 bebés que van a urgencias, ¿qué % va por Bronquitis?"
-    causa_edad_col = causa_edad.div(causa_edad.sum(axis=0), axis=1) * 100
-
-    # Configuración de los dos gráficos
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 10))
-
-    # Mapa 1: Distribución por Causa (Fila)
-    sns.heatmap(causa_edad_fila, annot=True, fmt=".1f", cmap="YlGnBu", ax=ax1)
-    ax1.set_title('¿Quiénes se enferman de esto?\n(% de cada edad dentro de la misma causa)', fontsize=14)
-    ax1.set_xlabel('Rangos de Edad')
-    ax1.set_ylabel('Causa de Atención')
-
-    # Mapa 2: Peso dentro del Grupo (Columna)
-    sns.heatmap(causa_edad_col, annot=True, fmt=".1f", cmap="YlOrRd", ax=ax2)
-    ax2.set_title('¿De qué se enferma este grupo?\n(% de importancia de la causa para esa edad)', fontsize=14)
-    ax2.set_xlabel('Rangos de Edad')
-    ax2.set_ylabel('') # Ocultamos para no repetir
-
-    plt.tight_layout()
+    # --- BLOQUE 3: COSTOS ---
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 9))
+    media_gral = df_temp['costo_unitario'].mean()
+    c_hosp = df_temp.groupby('establecimientoglosa')['costo_unitario'].mean().sort_values(ascending=False)
+    sns.barplot(x=c_hosp.values, y=c_hosp.index, ax=ax1, hue=c_hosp.index, palette='viridis', legend=False)
+    ax1.axvline(media_gral, color='red', linestyle='--'); ax1.set_title('Costo por Establecimiento')
+    c_causa = df_temp.groupby('causa')['costo_unitario'].mean().sort_values(ascending=False)
+    sns.barplot(x=c_causa.values, y=c_causa.index, ax=ax2, hue=c_causa.index, palette='rocket', legend=False)
+    ax2.axvline(media_gral, color='red', linestyle='--'); ax2.set_title('Costo por Causa')
     plt.show()
 
-    # [6] TENDENCIAS TEMPORALES POR GRUPO DE EDAD (Normalizado)
-    print("\n[6] ANALIZANDO ESTACIONALIDAD POR GRUPO DE EDAD...")
+    # --- BLOQUE 4: DIMENSIÓN TEMPORAL RECOMPLETO ---
+    print("\n[4] ANÁLISIS DE ESTACIONALIDAD...")
     
-    # Preparamos los datos agrupando por mes
-    df_est = df.copy()
-    df_est['mes'] = df_est['fechaatenciontexto'].dt.month
-    cols_edad = ['nummenor1anio', 'num1a4anios', 'num5a14anios', 'num15a64anios', 'num65omas']
-    
-    # Sumamos pacientes por mes y edad
-    estacionalidad = df_est.groupby('mes')[cols_edad].sum()
+    # A. Evolución Histórica
+    plt.figure(figsize=(15, 5))
+    df_ev = df_temp.groupby(['Año', 'Mes'])['numtotal'].sum().reset_index()
+    sns.lineplot(data=df_ev, x='Mes', y='numtotal', hue='Año', marker='o')
+    plt.title('Comparativa Mensual de Atenciones (Evolución Anual)')
+    plt.xticks(range(1, 13), meses_n); plt.show()
 
-    # NORMALIZACIÓN: Dividimos cada columna por su valor máximo
-    # Así todas las líneas oscilan entre 0 y 1 para comparar formas de curvas
-    est_norm = estacionalidad.div(estacionalidad.max())
+    # B. Picos Normalizados por Edad
+    plt.figure(figsize=(15, 5))
+    # Normalizamos (0 a 1) para que los 500 bebés no "tapen" a los otros grupos
+    est_norm = df_temp.groupby('Mes')[cols_edad].sum()
+    est_norm = (est_norm - est_norm.min()) / (est_norm.max() - est_norm.min())
+    sns.lineplot(data=est_norm, dashes=False, marker='o', linewidth=2.5)
+    plt.title('Sincronía de Picos por Edad (Escala Normalizada 0-1)')
+    plt.xticks(range(1, 13), meses_n); plt.ylabel('Intensidad de Demanda'); plt.show()
 
+    # C. Ciclo por Enfermedad
     plt.figure(figsize=(15, 6))
-    sns.lineplot(data=est_norm, dashes=False, marker='o', linewidth=2)
-
-    plt.title('Tendencia Estacional: ¿Cuándo ocurren los picos de atención por edad?\n(Valores normalizados para comparar curvas)')
-    plt.xlabel('Mes del Año')
-    plt.ylabel('Intensidad de Consultas (0 a 1)')
-    plt.xticks(range(1, 13), ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'])
-    plt.grid(True, alpha=0.3)
-    plt.legend(title='Grupo Etario', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
-    plt.show()
-
-    # [7] ANÁLISIS ECONÓMICO: COSTO POR PACIENTE INDIVIDUAL POR ESTABLECIMIENTO
-    print("\n[7] ANALIZANDO COSTOS UNITARIOS POR ESTABLECIMIENTO...")
+    m_causa = df_temp.groupby(['Mes', 'causa'])['numtotal'].mean().unstack()
     
-    # 1. Creamos una columna temporal para el costo unitario (Costo Fila / Total Pacientes Fila)
-    # Evitamos división por cero por seguridad
-    df['costo_unitario'] = df['costoatencionclp'] / df['numtotal'].replace(0, 1)
-
-    # 2. Ahora agrupamos por hospital, pero promediamos el COSTO UNITARIO
-    costo_unitario_hospital = df.groupby('establecimientoglosa')['costo_unitario'].mean().sort_values(ascending=False)
-
-    plt.figure(figsize=(12, 8))
-    sns.barplot(
-        x=costo_unitario_hospital.values, 
-        y=costo_unitario_hospital.index, 
-        hue=costo_unitario_hospital.index,
-        palette='viridis', # Cambié a viridis para diferenciarlo del anterior
-        legend=False
-    )
-
-    # 3. La línea de promedio también debe ser sobre el costo unitario
-    promedio_unitario_general = df['costo_unitario'].mean()
-    plt.axvline(promedio_unitario_general, color='red', linestyle='--', 
-                label=f'Promedio General: ${promedio_unitario_general:,.0f}')
-
-    plt.title('Costo Promedio POR PACIENTE según Establecimiento', fontsize=14)
-    plt.xlabel('Costo por Persona Atendida ($ CLP)')
-    plt.ylabel('Establecimiento')
-    plt.legend()
+    for c in m_causa.columns: 
+        plt.plot(m_causa.index, m_causa[c], marker='o', label=c)
     
-    plt.tight_layout()
-    plt.show()
-
-    # Eliminamos la columna temporal para no ensuciar el DataFrame original si lo sigues usando
-    df.drop(columns=['costo_unitario'], inplace=True)
-
-   
-    # [8] ANÁLISIS ECONÓMICO: COSTO PROMEDIO POR CAUSA
-    print("\n[9] ANALIZANDO COSTO PROMEDIO POR CAUSA...")
-    
-    # Calculamos el costo promedio por cada causa
-    # Agrupamos por causa y sacamos la media del costo de atención
-    costo_causa = df.groupby('causa')['costoatencionclp'].mean().sort_values(ascending=False)
-
-    plt.figure(figsize=(12, 8))
-    sns.barplot(
-        x=costo_causa.values, 
-        y=costo_causa.index, 
-        hue=costo_causa.index,
-        palette='rocket',
-        legend=False
-    )
-
-    plt.title('Costo Promedio de Atención según Causa Médica')
-    plt.xlabel('Costo Promedio por Atención ($ CLP)')
-    plt.ylabel('Causa')
-
-    # Añadimos etiquetas de valor para ver los montos exactos
-    for i, v in enumerate(costo_causa.values):
-        plt.text(v + (v * 0.01), i, f'${v:,.0f}', va='center', fontsize=10)
-
-    plt.tight_layout()
-    plt.show()
-
-    # [9] ESTACIONALIDAD MENSUAL PROMEDIO POR CAUSA
-    print("\n[12] ANALIZANDO COMPORTAMIENTO MENSUAL PROMEDIO...")
-
-    df_est = df.copy()
-    # Extraemos el mes y el nombre del mes para el eje X
-    df_est['mes_num'] = df_est['fechaatenciontexto'].dt.month
-    
-    # Agrupamos por Mes y Causa para obtener el promedio de pacientes
-    # Usamos mean() para que sea un "mes típico"
-    mensual_causa = df_est.groupby(['mes_num', 'causa'])['numtotal'].mean().unstack()
-
-    # Graficar
-    plt.figure(figsize=(14, 7))
-    
-    # Dibujamos una línea por cada causa
-    for causa in mensual_causa.columns:
-        plt.plot(mensual_causa.index, mensual_causa[causa], marker='o', linewidth=2, label=causa)
-
-    # Configuración estética
-    plt.title('Promedio Mensual de Consultas: Ciclo Anual por Enfermedad', fontsize=15)
-    plt.xlabel('Mes del Año')
-    plt.ylabel('Promedio de Pacientes por Registro')
-    
-    # Forzamos que el eje X muestre los nombres de los meses
-    meses_nombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-    plt.xticks(range(1, 13), meses_nombres)
-    
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend(title='Causa Médica', bbox_to_anchor=(1.05, 1), loc='upper left')
-    
-    # Resaltar visualmente el invierno
     plt.axvspan(6, 8, color='blue', alpha=0.05, label='Invierno')
     
+    # --- Título y Etiquetas de Ejes ---
+    plt.title('Evolución Mensual de la Demanda Asistencial por Patología y Periodo Estacional', fontsize=14)
+    plt.xlabel('Mes del Año', fontsize=12)
+    plt.ylabel('Promedio de Pacientes (Atenciones)', fontsize=12)
+    
+    plt.xticks(range(1, 13), meses_n)
+    plt.legend(title='Patologías', bbox_to_anchor=(1.05, 1))
     plt.tight_layout()
     plt.show()
+
+    # --- BLOQUE 5: ANÁLISIS POR SEXO (DIMENSIÓN DEMOGRÁFICA) ---
+    print("\n[5] ANÁLISIS POR SEXO Y TENDENCIAS...")
+    
+    # 1. Definimos la paleta manual
+    paleta_genero = {"M": "royalblue", "F": "pink"}
+    
+    # Filtramos registros válidos
+    df_sexo = df_temp[df_temp['sexopaciente'].isin(['F', 'M'])]
+    
+    fig, axes = plt.subplots(1, 3, figsize=(22, 7))
+
+    # A. Volumen Total por Fecha y Sexo
+    # Usamos hue_order para asegurar que el orden de la leyenda sea consistente
+    sns.lineplot(data=df_sexo.groupby(['Mes', 'sexopaciente'])['numtotal'].sum().reset_index(), 
+                 x='Mes', y='numtotal', hue='sexopaciente', hue_order=['M', 'F'],
+                 marker='o', ax=axes[0], palette=paleta_genero)
+    axes[0].set_title('Evolución Mensual: Hombre (Azul) vs Mujer (Naranja)')
+    axes[0].set_xticks(range(1, 13))
+    axes[0].set_xticklabels(meses_n)
+
+    # B. Top Causas segmentadas por Sexo
+    top_5_causas = df_temp.groupby('causa')['numtotal'].sum().sort_values(ascending=False).head(5).index
+    df_causa_sexo = df_sexo[df_sexo['causa'].isin(top_5_causas)]
+    sns.barplot(data=df_causa_sexo, x='numtotal', y='causa', hue='sexopaciente', 
+                hue_order=['M', 'F'], estimator=sum, errorbar=None, ax=axes[1], palette=paleta_genero)
+    axes[1].set_title('Carga de Enfermedad por Sexo (Top 5)')
+
+    # C. Distribución de Costos por Sexo
+    sns.boxplot(data=df_sexo, x='sexopaciente', y='costo_unitario', hue='sexopaciente',
+                order=['M', 'F'], palette=paleta_genero, ax=axes[2], showfliers=False)
+    axes[2].axhline(media_gral, color='red', linestyle='--', label='Media Gral')
+    axes[2].set_title('Distribución de Costo Unitario por Sexo')
+    
+    plt.tight_layout()
+    plt.show()
+
+    # --- BLOQUE 6: ANÁLISIS CRUZADO DE PATOLOGÍAS Y EDAD ---
+    print("\n[6] GENERANDO PERFILES EPIDEMIOLÓGICOS...")
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(26, 10))
+
+    # --- A. PERFIL ETARIO POR PATOLOGÍA (Normalizado por Fila) ---
+    # Responde: "De los que tienen Bronquitis, ¿qué % son bebés?"
+    df_causa_edad = df_temp.groupby('causa')[cols_edad].sum()
+    df_causa_pct = df_causa_edad.div(df_causa_edad.sum(axis=1), axis=0) * 100
+    
+    df_causa_pct.plot(kind='barh', stacked=True, ax=ax1, colormap='viridis')
+    ax1.set_title('A. Distribución de Edades por cada Patología', fontsize=14, fontweight='bold')
+    ax1.set_xlabel('Porcentaje del Grupo Etario dentro de la Enfermedad (%)')
+    ax1.set_ylabel('Patología')
+    ax1.legend(etiquetas_edad, title='Rango de Edad', loc='lower right', fontsize=9)
+
+    # Añadir etiquetas al gráfico A
+    for p in ax1.patches:
+        width = p.get_width()
+        if width > 6:
+            ax1.text(p.get_x() + width/2, p.get_y() + p.get_height()/2, f'{width:.1f}%', 
+                     va='center', ha='center', color='white', fontweight='bold', fontsize=8)
+
+    # --- B. COMPOSICIÓN DE ENFERMEDADES POR EDAD (Normalizado por Columna) ---
+    # Responde: "De los bebés que llegan, ¿qué % tiene bronquitis?"
+    df_edad_relativo = df_causa_edad.div(df_causa_edad.sum(axis=0), axis=1) * 100
+    
+    df_edad_relativo.T.plot(kind='barh', stacked=True, ax=ax2, colormap='tab20')
+    ax2.set_title('B. Mix de Patologías dentro de cada Grupo Etario', fontsize=14, fontweight='bold')
+    ax2.set_xlabel('Porcentaje de la Patología dentro del Rango de Edad (%)')
+    ax2.set_ylabel('Grupo Etario')
+    ax2.legend(title='Patologías', bbox_to_anchor=(1.05, 1))
+
+    # Añadir etiquetas al gráfico B
+    for p in ax2.patches:
+        width = p.get_width()
+        if width > 8:
+            ax2.text(p.get_x() + width/2, p.get_y() + p.get_height()/2, f'{width:.1f}%', 
+                     va='center', ha='center', color='white', fontweight='bold', fontsize=8)
+
+    plt.tight_layout()
+    plt.show()
+
+    print("-" * 50)
+    print("EDA Finalizado. El dataset está listo para el informe técnico y el modelamiento.")

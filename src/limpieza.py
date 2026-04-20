@@ -117,4 +117,14 @@ def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
     # 9. Eliminar duplicados
     df = df.drop_duplicates()
 
+    columnas_finales = [
+        'establecimientocodigo', 'establecimientoglosa', 'anio', 'semanaestadistica',
+        'causa', 'numtotal', 'nummenor1anio', 'num1a4anios', 
+        'num5a14anios', 'num15a64anios', 'num65omas', 
+        'fechaatenciontexto', 'sexopaciente', 'prioridadtriage', 'costoatencionclp'
+    ]
+    
+    # Solo devolvemos las columnas que nos interesan
+    df = df[columnas_finales].copy()
+
     return df

@@ -312,5 +312,46 @@ def generar_informe_eda(df: pd.DataFrame):
     plt.tight_layout()
     plt.show()
 
+    # --- BLOQUE 7: ANÁLISIS ESTRATÉGICO DE TRIAGE (CORREGIDO) ---
+    print("\n[7] ANALIZANDO RELACIÓN ENFERMEDAD-GRAVEDAD CON SEMÁFORO DE SALUD...")
+    
+    df_triage_clean = df_temp[df_temp['prioridadtriage'].isin(['C1', 'C2', 'C3', 'C4', 'C5'])]
+    orden_triage = ['C1', 'C2', 'C3', 'C4', 'C5']
+    
+    # Definimos paleta manual: C1=Rojo, C2=Naranja, C3=Amarillo, C4=Verde Claro, C5=Verde Fuerte
+    colores_triage = ['#d73027', '#f46d43', '#fee08b', '#d9ef8b', '#1a9850']
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
+
+    # A. TRIAGE POR ENFERMEDAD (Composición de Gravedad)
+    df_causa_triage = df_triage_clean.groupby(['causa', 'prioridadtriage'])['numtotal'].sum().unstack().fillna(0)
+    df_causa_triage_pct = df_causa_triage.div(df_causa_triage.sum(axis=1), axis=0) * 100
+
+    # Graficamos con los colores correctos
+    df_causa_triage_pct[orden_triage].plot(kind='barh', stacked=True, ax=ax1, color=colores_triage)
+    ax1.set_title('A. Composición de Gravedad (Triage) por Patología', fontsize=14, fontweight='bold')
+    ax1.set_xlabel('Porcentaje del Nivel de Triage (%)')
+    ax1.legend(title='Nivel Triage (Rojo = Grave)', bbox_to_anchor=(1.05, 1))
+
+    # B. EVOLUCIÓN MENSUAL DEL TRIAGE
+    df_mes_triage = df_triage_clean.groupby(['Mes', 'prioridadtriage'])['numtotal'].sum().unstack().fillna(0)
+    df_mes_triage_pct = df_mes_triage.div(df_mes_triage.sum(axis=1), axis=0) * 100
+
+    # Usamos los mismos colores para las líneas
+    for i, nivel in enumerate(orden_triage):
+        ax2.plot(df_mes_triage_pct.index, df_mes_triage_pct[nivel], marker='o', 
+                 label=nivel, color=colores_triage[i], linewidth=3)
+
+    ax2.axvspan(6, 8, color='blue', alpha=0.05, label='Invierno')
+    ax2.set_title('B. Evolución de la Gravedad Relativa por Mes', fontsize=14, fontweight='bold')
+    ax2.set_ylabel('Composición Porcentual (%)')
+    ax2.set_xticks(range(1, 13))
+    ax2.set_xticklabels(meses_n)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(title='Prioridad', loc='upper left')
+
+    plt.tight_layout()
+    plt.show()
+
     print("-" * 50)
     print("EDA Finalizado. El dataset está listo para el informe técnico y el modelamiento.")

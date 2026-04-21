@@ -68,7 +68,7 @@ def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
     for col in columnas_texto:
         df[col] = df[col].astype(str).str.lower().str.strip().fillna("sin información")
 
-    # 4. Normalizar Sexo Paciente 
+    # 4. Normalizar Sexo Paciente
     df["sexopaciente"] = (
         df["sexopaciente"]
         .str.lower()

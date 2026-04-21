@@ -5,22 +5,22 @@ import numpy as np
 
 def realizar_diagnostico_inicial(df: pd.DataFrame):
     """
-    Realiza un escaneo rápido de la calidad y consistencia del dataset 
+    Realiza un escaneo rápido de la calidad y consistencia del dataset
     antes de cualquier proceso de limpieza o transformación.
     """
     print("--- DIAGNÓSTICO INICIAL DE CALIDAD DE DATOS ---")
-    
+
     # 1. Estructura Básica
     print(f"\n[1] Dimensiones: {df.shape[0]} filas y {df.shape[1]} columnas.")
-    
+
     # 2. Análisis de Nulos, Tipos y DUPLICADOS
     print("\n[2] Análisis de Integridad Superficial:")
-    
+
     duplicados = df.duplicated().sum()
     nulos_totales = df.isnull().sum().sum()
-    
+
     print(f"- Filas duplicadas detectadas: {duplicados}")
-    
+
     if nulos_totales > 0:
         print(f"- Valores nulos detectados: {nulos_totales}")
         info_calidad = pd.DataFrame({
